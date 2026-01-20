@@ -1,0 +1,180 @@
+// --------------------------------------
+// 1. CONFIGURATION
+// --------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection details are now in prisma.config.ts
+}
+
+// --------------------------------------
+// 2. ENUMS (The Rules)
+// --------------------------------------
+
+enum UserRole {
+  GUEST     // Regular renter
+  VENDOR    // Can list vehicles (Sacco, Private, or TSV)
+  ADMIN     // You (System Admin)
+}
+
+enum VendorType {
+  PRIVATE
+  SACCO
+  TSV
+}
+
+enum VehicleCategory {
+  NGANYA    // Custom PSV (Matatu)
+  TOUR_VAN  // Landcruiser/Safari Van
+  PRIVATE   // Saloon/SUV/Luxury
+  BUS       // Large capacity bus
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED // Deposit Paid
+  ACTIVE    // Trip in progress
+  COMPLETED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// --------------------------------------
+// 3. USER IDENTITY
+// --------------------------------------
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  fullName      String?
+  avatarUrl     String?
+  phoneNumber   String?   @unique // Personal Phone (Login/M-Pesa)
+  
+  role          UserRole  @default(GUEST)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  vendorProfile VendorProfile? // Only exists if role == VENDOR
+  bookings      Booking[]      // Trips they have booked
+  reviews       Review[]       // Reviews they have written
+}
+
+// --------------------------------------
+// 4. THE SUPPLY SIDE (Polymorphic Profile)
+// --------------------------------------
+
+model VendorProfile {
+  id            String           @id @default(uuid())
+  userId        String           @unique
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type          VendorType       // SACCO, PRIVATE, or TSV
+  businessName  String           // "Super Metro" or "John Kamau"
+  bio           String?
+  
+  // *** FIXED: Added phone field for Business Contact ***
+  phone         String           
+  
+  // Verification Documents (Private to Admin)
+  registrationDocUrl String?     // Sacco Cert / Business Permit
+  kraPinUrl          String?
+  isVerified         VerificationStatus @default(PENDING)
+
+  // Fleet
+  vehicles      Vehicle[]
+}
+
+// --------------------------------------
+// 5. THE INVENTORY (Smart Vehicles)
+// --------------------------------------
+
+model Vehicle {
+  id          String          @id @default(uuid())
+  name        String          // e.g., "Catalyst", "007"
+  plateNumber String          @unique // The primary ghost-data preventer
+  category    VehicleCategory
+  
+  // Pricing
+  pricePerDay Int             // Store in CENTS/SHILLINGS (e.g. 5000)
+  currency    String          @default("KES")
+  
+  // Visuals
+  coverImage  String
+  gallery     String[]        // Array of URLs
+  
+  // The "Smart" Details
+  seats       Int
+  transmission String         // Manual/Auto
+  fuelType     String         // Petrol/Diesel/EV
+  
+  // Features stored as JSON for flexibility
+  features    Json            
+  
+  // Availability Logic
+  isAvailable Boolean         @default(true) // Manual toggle
+  
+  // Relations
+  vendorId    String
+  vendor      VendorProfile   @relation(fields: [vendorId], references: [id])
+  bookings    Booking[]
+  reviews     Review[]
+  
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+// --------------------------------------
+// 6. THE TRANSACTION (Booking Core)
+// --------------------------------------
+
+model Booking {
+  id          String        @id @default(uuid())
+  
+  startDate   DateTime
+  endDate     DateTime
+  totalPrice  Int           
+  
+  status      BookingStatus @default(PENDING)
+  paymentRef  String?       // M-Pesa Receipt Number
+  
+  // Relations
+  userId      String        // The Renter
+  user        User          @relation(fields: [userId], references: [id])
+  
+  vehicleId   String
+  vehicle     Vehicle       @relation(fields: [vehicleId], references: [id])
+
+  createdAt   DateTime      @default(now())
+
+  // Constraints: Prevents logical data corruption
+  @@index([vehicleId, startDate, endDate])
+}
+
+// --------------------------------------
+// 7. SOCIAL PROOF
+// --------------------------------------
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int      // 1-5
+  comment   String?
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+  
+  createdAt DateTime @default(now())
+}
