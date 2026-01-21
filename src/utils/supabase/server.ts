@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
@@ -9,36 +9,21 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll()
         },
-        set(name: string, value: string, options: CookieOptions) {
+        setAll(cookiesToSet) {
           try {
-            // FIX: Aggressively handle localhost cookie issues
-            if (process.env.NODE_ENV === 'development') {
-              // 1. Force HTTP (not secure)
-              options.secure = false
-              // 2. Force SameSite=Lax (Strict often fails on redirects)
-              options.sameSite = 'lax'
-              // 3. Remove domain so it defaults to localhost
-              delete options.domain
-            }
-            
-            cookieStore.set({ name, value, ...options })
-          } catch (error) {
-            // Handle cookie errors
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            if (process.env.NODE_ENV === 'development') {
-              options.secure = false
-              options.sameSite = 'lax'
-              delete options.domain
-            }
-            cookieStore.set({ name, value: '', ...options })
-          } catch (error) {
-            // Handle cookie errors
+            cookiesToSet.forEach(({ name, value, options }) => {
+              if (process.env.NODE_ENV === 'development') {
+                options.secure = false
+                options.sameSite = 'lax'
+                delete options.domain
+              }
+              cookieStore.set(name, value, options)
+            })
+          } catch {
+            // Ignored in middleware contexts
           }
         },
       },

@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
-import { NextResponse } from 'next/server'
+import { redirect } from 'next/navigation' // Ensure this import is used!
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -10,23 +10,19 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
-      // SUCCESS: Session established.
-      // We use NextResponse.redirect to ensure headers are passed correctly
-      const forwardedHost = request.headers.get('x-forwarded-host') // specific for proxy environments
+      const forwardedHost = request.headers.get('x-forwarded-host') 
       const isLocal = origin.includes('localhost')
       
       if (isLocal) {
-        return NextResponse.redirect(`${origin}/onboarding`)
+        redirect(`${origin}/onboarding`)
       } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}/onboarding`)
+        redirect(`https://${forwardedHost}/onboarding`)
       } else {
-        return NextResponse.redirect(`${origin}/onboarding`)
+        redirect(`${origin}/onboarding`)
       }
     }
-    
     console.error('🔥 Auth Exchange Error:', error)
   }
 
-  // Fallback if no code or error
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`)
+  redirect(`${origin}/login?error=auth_failed`)
 }
