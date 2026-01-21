@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // 1. Create the initial response
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -17,21 +18,29 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: CookieOptions) {
-          // THE FIX: Override secure setting on localhost
+          // FIX: Handle Localhost Cookie Constraints
           if (process.env.NODE_ENV === 'development') {
             options.secure = false
+            options.sameSite = 'lax'
+            delete options.domain
           }
 
+          // 1. Update the Request cookies (so the Server Components see the new session)
           request.cookies.set({
             name,
             value,
             ...options,
           })
+
+          // 2. Update the Response cookies (so the Browser saves the session)
+          // We must recreate the response to pass the updated request cookies downstream
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           })
+          
+          // 3. IMPORTANT: Manually copy the new cookie to the new response
           response.cookies.set({
             name,
             value,
@@ -39,16 +48,24 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove(name: string, options: CookieOptions) {
+          if (process.env.NODE_ENV === 'development') {
+            options.secure = false
+            options.sameSite = 'lax'
+            delete options.domain
+          }
+
           request.cookies.set({
             name,
             value: '',
             ...options,
           })
+          
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           })
+          
           response.cookies.set({
             name,
             value: '',
@@ -59,11 +76,12 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // 2. Run the Auth Check
   const { data: { user } } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
 
-  // Protected Routes
+  // Protected Routes Logic
   if (path.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
@@ -79,7 +97,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Auth Routes
+  // Redirect logged-in users away from login
   if (path === '/login' && user) {
      const username = user.user_metadata?.username
      if (username) {

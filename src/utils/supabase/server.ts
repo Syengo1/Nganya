@@ -14,25 +14,31 @@ export async function createClient() {
         },
         set(name: string, value: string, options: CookieOptions) {
           try {
-            // THE FIX: Override secure setting on localhost
+            // FIX: Aggressively handle localhost cookie issues
             if (process.env.NODE_ENV === 'development') {
+              // 1. Force HTTP (not secure)
               options.secure = false
+              // 2. Force SameSite=Lax (Strict often fails on redirects)
+              options.sameSite = 'lax'
+              // 3. Remove domain so it defaults to localhost
+              delete options.domain
             }
             
             cookieStore.set({ name, value, ...options })
           } catch (error) {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // Handle cookie errors
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
+            if (process.env.NODE_ENV === 'development') {
+              options.secure = false
+              options.sameSite = 'lax'
+              delete options.domain
+            }
             cookieStore.set({ name, value: '', ...options })
           } catch (error) {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // Handle cookie errors
           }
         },
       },
